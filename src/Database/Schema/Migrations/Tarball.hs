@@ -16,7 +16,9 @@ import qualified Codec.Archive.Tar                    as Tar
 import qualified Codec.Compression.GZip               as Gzip
 import           Control.Exception                    (Exception, catch,
                                                        throwIO)
-import           Data.Aeson                           (FromJSON(..), ToJSON(..), Value(String), withText)
+import           Data.Aeson                           (FromJSON (..),
+                                                       ToJSON (..),
+                                                       Value (String), withText)
 import qualified Data.ByteString                      as BS
 import qualified Data.ByteString.Base64.Lazy          as B64
 import qualified Data.ByteString.Lazy                 as LBS

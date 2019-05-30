@@ -1,7 +1,7 @@
-{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE TypeOperators     #-}
@@ -15,10 +15,11 @@ where
 
 import           Control.Exception.Lifted                (catch)
 import           Control.Monad                           (forM, void, (<=<))
-import           Control.Monad.Trans.Control             (MonadBaseControl)
-import           Control.Monad.Except                    (MonadError, ExceptT, runExceptT)
+import           Control.Monad.Except                    (ExceptT, MonadError,
+                                                          runExceptT)
+import           Control.Monad.IO.Class                  (MonadIO (..))
 import           Control.Monad.Reader                    (runReaderT)
-import           Control.Monad.IO.Class                  (MonadIO(..))
+import           Control.Monad.Trans.Control             (MonadBaseControl)
 import           Data.Aeson                              (FromJSON, ToJSON)
 import           Data.String.Conversions                 (cs)
 import           Data.Text                               (Text)
@@ -26,21 +27,23 @@ import qualified Data.Text                               as T
 import           Database.HDBC                           (SqlError)
 import           Database.HDBC.PostgreSQL                (connectPostgreSQL)
 import           Database.Schema.Migrations
-import           Database.Schema.Migrations.Migration    (Migration(mId))
+import           Database.Schema.Migrations.Backend
 import           Database.Schema.Migrations.Backend.HDBC (hdbcBackend)
+import           Database.Schema.Migrations.Migration    (Migration (mId))
 import           Database.Schema.Migrations.Store
 import           Database.Schema.Migrations.Tarball      (TarballContents (..),
-                                                          tarballStore, TarballStoreError)
-import           Database.Schema.Migrations.Backend
-import           GHC.Generics (Generic)
-import           Moo.CommandUtils (lookupMigration, withBackend)
+                                                          TarballStoreError,
+                                                          tarballStore)
+import           GHC.Generics                            (Generic)
+import           Moo.CommandUtils                        (lookupMigration,
+                                                          withBackend)
 import           Moo.Core
 
 import           Servant
 
 data UpgradeRequest = UpgradeRequest
   { connString :: String
-  , tarball      :: TarballContents
+  , tarball    :: TarballContents
   } deriving (Generic, ToJSON, FromJSON)
 
 data UpgradeServerError =
@@ -103,10 +106,10 @@ upgradeCommand storeData = withBackend $ \backend -> do
   then pure []
   else do
     applied <- fmap concat $ forM migrationNames $ \migrationName -> do
-        m <- lookupMigration storeData migrationName
-        toApply <- migrationsToApply storeData backend m
-        mapM_ (applyMigration backend) toApply
-        pure toApply
+      m <- lookupMigration storeData migrationName
+      toApply <- migrationsToApply storeData backend m
+      mapM_ (applyMigration backend) toApply
+      pure toApply
     commitBackend backend
     pure applied
 

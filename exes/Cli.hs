@@ -1,12 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Cli (main) where
 
-import           Control.Monad.Except                    (runExceptT)
-import qualified Data.ByteString.Lazy                    as LBS
-import           Database.Schema.Server                  (UpgradeRequest(..), genericServer)
-import           Database.Schema.Migrations.Tarball      (TarballContents(..))
-import           System.Environment                      (getArgs)
-import           System.Exit                             (exitFailure)
+import           Control.Monad.Except               (runExceptT)
+import qualified Data.ByteString.Lazy               as LBS
+import           Database.Schema.Migrations.Tarball (TarballContents (..))
+import           Database.Schema.Server             (UpgradeRequest (..),
+                                                     genericServer)
+import           System.Environment                 (getArgs)
+import           System.Exit                        (exitFailure)
 
 main :: IO ()
 main = do
