@@ -70,7 +70,7 @@ server req = do
                             , _appLinearMigrations = False
                             , _appTimestampFilenames = False
                             }
-          (liftIO $ runReaderT (_cHandler command storeData) st) `catch` (throwAsServantError . SqlError)
+          liftIO (runReaderT (_cHandler command storeData) st) `catch` (throwAsServantError . SqlError)
           pure NoContent
     Left err -> throwAsServantError $ TarballStoreError err
 
