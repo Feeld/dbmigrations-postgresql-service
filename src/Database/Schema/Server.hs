@@ -14,7 +14,7 @@ module Database.Schema.Server
 where
 
 import           Control.Exception.Lifted                (catch)
-import           Control.Monad                           (forM, void, (<=<))
+import           Control.Monad                           (forM, (<=<))
 import           Control.Monad.Except                    (ExceptT, MonadError,
                                                           runExceptT)
 import           Control.Monad.IO.Class                  (MonadIO (..))
@@ -71,7 +71,6 @@ genericServer req = do
 
   connection <- liftIO $ connectPostgreSQL (connString req)
   let backend = hdbcBackend connection
-  let command = upgrade
 
   case tarballStore $ tarball req of
     Right store -> do
@@ -79,24 +78,22 @@ genericServer req = do
       case loadedStoreData of
         Left es -> throwError $ LoadError es
         Right storeData -> do
-          let st = AppState { _appOptions = commandOptions
-                            , _appCommand = command
-                            , _appRequiredArgs = []
-                            , _appOptionalArgs = ["" :: Text]
-                            , _appBackend = backend
-                            , _appStore = store
-                            , _appStoreData = storeData
-                            , _appLinearMigrations = False
-                            , _appTimestampFilenames = False
-                            }
+          let st = AppState
+                    { _appOptions = CommandOptions Nothing False True --dummy
+                    , _appCommand = Command "" [] [] [] "" (const (pure ())) --dummy
+                    , _appRequiredArgs = []
+                    , _appOptionalArgs = ["" :: Text]
+                    , _appBackend = backend
+                    , _appStore = store
+                    , _appStoreData = storeData
+                    , _appLinearMigrations = False
+                    , _appTimestampFilenames = False
+                    }
           applied <- liftIO (runReaderT (upgradeCommand storeData) st)
                       `catch` (throwError . SqlError)
           pure $ map mId applied
     Left err -> throwError $ TarballStoreError err
 {-# INLINEABLE genericServer #-}
-
-upgrade :: Command
-upgrade = Command "upgrade" [] [] [] "" (void . upgradeCommand)
 
 upgradeCommand :: StoreData -> AppT [Migration]
 upgradeCommand storeData = withBackend $ \backend -> do
@@ -112,9 +109,6 @@ upgradeCommand storeData = withBackend $ \backend -> do
       pure toApply
     commitBackend backend
     pure applied
-
-commandOptions :: CommandOptions
-commandOptions = CommandOptions Nothing False True
 
 toServantError
   :: UpgradeServerError -> ServantErr
