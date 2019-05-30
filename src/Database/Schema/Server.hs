@@ -111,9 +111,9 @@ genericServer req =
     Left err -> throwError $ TarballStoreError err
 {-# INLINEABLE genericServer #-}
 
--- | Like dbmigrations' 'upgradeCommand' but this one doesn't support test mode,
--- doesn't exit the process if error and returns a list of applied migration
--- names. IOW, behaves well inside a long-running process
+-- | Like dbmigrations' 'upgradeCommand' but this one doesn't exit the process on
+-- error and returns a list of applied migration names.
+-- IOW, behaves well inside a long-running process
 upgradeCommand :: StoreData -> AppT [Migration]
 upgradeCommand storeData = do
   isTesting <-  _test <$> asks _appOptions
