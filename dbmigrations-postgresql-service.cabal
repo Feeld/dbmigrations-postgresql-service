@@ -18,7 +18,9 @@ category:            Web
 extra-source-files:  CHANGELOG.md
 
 library
-  exposed-modules:     Database.Schema.Migrations.Tarball
+  exposed-modules:
+    Database.Schema.Migrations.Tarball
+    Database.Schema.Server
   build-depends:
     base ^>=4.12.0.0,
     tar ^>=0.5.1.0,
@@ -30,7 +32,14 @@ library
     yaml-light ^>=0.1.4,
     bytestring ^>=0.10.8.2,
     filepath,
-    dbmigrations
+    dbmigrations,
+    HDBC,
+    HDBC-postgresql,
+    mtl,
+    servant-server,
+    servant,
+    lifted-base,
+    monad-control
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -39,6 +48,24 @@ executable dbmigrations-postgresql-cli
   -- other-modules:
   other-extensions:    BangPatterns, DeriveAnyClass, OverloadedStrings, ScopedTypeVariables
   ghc-options: -Wall -main-is Cli -rtsopts
+  build-depends:
+    base ^>=4.12.0.0,
+    bytestring,
+    dbmigrations,
+    text,
+    HDBC,
+    HDBC-postgresql,
+    string-conversions,
+    mtl,
+    dbmigrations-postgresql-service
+  hs-source-dirs:      exes
+  default-language:    Haskell2010
+
+executable dbmigrations-postgresql-service
+  main-is:             Service.hs
+  -- other-modules:
+  other-extensions:    BangPatterns, DeriveAnyClass, OverloadedStrings, ScopedTypeVariables
+  ghc-options: -Wall -main-is Service -rtsopts
   build-depends:
     base ^>=4.12.0.0,
     bytestring,
