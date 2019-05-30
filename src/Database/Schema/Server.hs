@@ -5,7 +5,7 @@
 module Database.Schema.Server
   ( server
   , UpgradeAPI
-  , UpgradeServerError
+  , UpgradeRequest(..)
   )
 where
 
