@@ -13,37 +13,52 @@ module Database.Schema.Server
   )
 where
 
+import           Database.Schema.Migrations.Tarball      (TarballContents (..),
+                                                          TarballStoreError,
+                                                          tarballStore)
+
 import           Control.Exception.Lifted                (catch)
 import           Control.Monad                           (forM, (<=<))
 import           Control.Monad.Except                    (ExceptT, MonadError,
-                                                          runExceptT)
+                                                          runExceptT,
+                                                          throwError)
 import           Control.Monad.IO.Class                  (MonadIO (..))
-import           Control.Monad.Reader                    (runReaderT)
+import           Control.Monad.Reader                    (asks, runReaderT)
 import           Control.Monad.Trans.Control             (MonadBaseControl)
 import           Data.Aeson                              (FromJSON, ToJSON)
+import           Data.Proxy                              (Proxy (..))
 import           Data.String.Conversions                 (cs)
 import           Data.Text                               (Text)
 import qualified Data.Text                               as T
 import           Database.HDBC                           (SqlError)
 import           Database.HDBC.PostgreSQL                (connectPostgreSQL)
-import           Database.Schema.Migrations
-import           Database.Schema.Migrations.Backend
+import           Database.Schema.Migrations              (ensureBootstrappedBackend,
+                                                          migrationsToApply,
+                                                          missingMigrations)
+import           Database.Schema.Migrations.Backend      (applyMigration,
+                                                          commitBackend,
+                                                          rollbackBackend)
 import           Database.Schema.Migrations.Backend.HDBC (hdbcBackend)
 import           Database.Schema.Migrations.Migration    (Migration (mId))
-import           Database.Schema.Migrations.Store
-import           Database.Schema.Migrations.Tarball      (TarballContents (..),
-                                                          TarballStoreError,
-                                                          tarballStore)
+import           Database.Schema.Migrations.Store        (MapValidationError,
+                                                          StoreData,
+                                                          loadMigrations)
 import           GHC.Generics                            (Generic)
 import           Moo.CommandUtils                        (lookupMigration,
                                                           withBackend)
-import           Moo.Core
-
-import           Servant
+import           Moo.Core                                (AppState (..), AppT,
+                                                          Command (..),
+                                                          CommandOptions (..))
+import           Servant                                 ((:>), Handler, JSON,
+                                                          Post, ReqBody,
+                                                          ServantErr (..),
+                                                          Server, err400,
+                                                          hoistServer)
 
 data UpgradeRequest = UpgradeRequest
   { connString :: String
   , tarball    :: TarballContents
+  , test       :: Bool
   } deriving (Generic, ToJSON, FromJSON)
 
 data UpgradeServerError =
@@ -67,23 +82,24 @@ genericServer
      , MonadError UpgradeServerError m
      )
   => UpgradeRequest -> m [Text]
-genericServer req = do
-
-  connection <- liftIO $ connectPostgreSQL (connString req)
-  let backend = hdbcBackend connection
-
+genericServer req =
   case tarballStore $ tarball req of
     Right store -> do
       loadedStoreData <- liftIO $ loadMigrations store
       case loadedStoreData of
         Left es -> throwError $ LoadError es
         Right storeData -> do
+          connection <- liftIO $ connectPostgreSQL (connString req)
           let st = AppState
-                    { _appOptions = CommandOptions Nothing False True --dummy
+                    { _appOptions = CommandOptions
+                        { _configFilePath = Nothing
+                        , _test = test req
+                        , _noAsk = True
+                        }
                     , _appCommand = Command "" [] [] [] "" (const (pure ())) --dummy
                     , _appRequiredArgs = []
-                    , _appOptionalArgs = ["" :: Text]
-                    , _appBackend = backend
+                    , _appOptionalArgs = []
+                    , _appBackend = hdbcBackend connection
                     , _appStore = store
                     , _appStoreData = storeData
                     , _appLinearMigrations = False
@@ -95,20 +111,25 @@ genericServer req = do
     Left err -> throwError $ TarballStoreError err
 {-# INLINEABLE genericServer #-}
 
+-- | Like dbmigrations' 'upgradeCommand' but this one doesn't support test mode,
+-- doesn't exit the process if error and returns a list of applied migration
+-- names. IOW, behaves well inside a long-running process
 upgradeCommand :: StoreData -> AppT [Migration]
-upgradeCommand storeData = withBackend $ \backend -> do
-  ensureBootstrappedBackend backend >> commitBackend backend
-  migrationNames <- missingMigrations backend storeData
-  if null migrationNames
-  then pure []
-  else do
-    applied <- fmap concat $ forM migrationNames $ \migrationName -> do
-      m <- lookupMigration storeData migrationName
-      toApply <- migrationsToApply storeData backend m
-      mapM_ (applyMigration backend) toApply
-      pure toApply
-    commitBackend backend
-    pure applied
+upgradeCommand storeData = do
+  isTesting <-  _test <$> asks _appOptions
+  withBackend $ \backend -> do
+    ensureBootstrappedBackend backend >> commitBackend backend
+    migrationNames <- missingMigrations backend storeData
+    if null migrationNames
+    then pure []
+    else do
+      applied <- fmap concat $ forM migrationNames $ \migrationName -> do
+        m <- lookupMigration storeData migrationName
+        toApply <- migrationsToApply storeData backend m
+        mapM_ (applyMigration backend) toApply
+        pure toApply
+      (if isTesting then rollbackBackend else commitBackend) backend
+      pure applied
 
 toServantError
   :: UpgradeServerError -> ServantErr

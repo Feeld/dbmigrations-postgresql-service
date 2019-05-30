@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Cli (main) where
 
-import           Control.Monad.Except               (runExceptT)
-import qualified Data.ByteString.Lazy               as LBS
 import           Database.Schema.Migrations.Tarball (TarballContents (..))
 import           Database.Schema.Server             (UpgradeRequest (..),
                                                      genericServer)
-import           System.Environment                 (getArgs)
+
+import           Control.Monad.Except               (runExceptT)
+import qualified Data.ByteString.Lazy               as LBS
+import           Data.Maybe                         (isJust)
+import           System.Environment                 (getArgs, lookupEnv)
 import           System.Exit                        (exitFailure)
 
 main :: IO ()
@@ -15,7 +17,8 @@ main = do
   case args of
     [connstring] -> do
       contents <- TarballContents <$> LBS.getContents
-      eResult <- runExceptT $ genericServer $ UpgradeRequest connstring contents
+      isTesting <- isJust <$> lookupEnv "DBM_TEST"
+      eResult <- runExceptT $ genericServer $ UpgradeRequest connstring contents isTesting
       case eResult of
         Right [] -> putStrLn "Database is up to date"
         Right applied -> do
