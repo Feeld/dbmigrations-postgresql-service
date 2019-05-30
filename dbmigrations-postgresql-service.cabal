@@ -22,7 +22,9 @@ library
     Database.Schema.Migrations.Tarball
     Database.Schema.Server
   build-depends:
+    aeson,
     base ^>=4.12.0.0,
+    base64-bytestring,
     tar ^>=0.5.1.0,
     zlib ^>=0.6.2,
     containers ^>=0.6.0.1,
@@ -42,6 +44,7 @@ library
     monad-control
   hs-source-dirs:      src
   default-language:    Haskell2010
+  ghc-options: -Wall
 
 executable dbmigrations-postgresql-cli
   main-is:             Cli.hs
@@ -51,11 +54,6 @@ executable dbmigrations-postgresql-cli
   build-depends:
     base ^>=4.12.0.0,
     bytestring,
-    dbmigrations,
-    text,
-    HDBC,
-    HDBC-postgresql,
-    string-conversions,
     mtl,
     dbmigrations-postgresql-service
   hs-source-dirs:      exes

@@ -16,7 +16,9 @@ import qualified Codec.Archive.Tar                    as Tar
 import qualified Codec.Compression.GZip               as Gzip
 import           Control.Exception                    (Exception, catch,
                                                        throwIO)
+import           Data.Aeson                           (FromJSON(..), ToJSON(..), Value(String), withText)
 import qualified Data.ByteString                      as BS
+import qualified Data.ByteString.Base64.Lazy          as B64
 import qualified Data.ByteString.Lazy                 as LBS
 import qualified Data.Map.Strict                      as M
 import           Data.Maybe
@@ -68,11 +70,13 @@ tarballStore contents =
 newtype TarballContents = TarballContents
   { unTarballContents :: LBS.ByteString }
 
+instance ToJSON TarballContents where
+  toJSON = String . cs . B64.encode . unTarballContents
 
--- make everything compile
--- then change filepath to entry and call it migrationfromentry
--- to get filepath for name etc you need to say that path = EntryPath,
--- then parse the bytes from entry. Look at Tar documentations.
+instance FromJSON TarballContents where
+  parseJSON = withText "TarballContents" $
+    pure . TarballContents . B64.decodeLenient . cs
+
 migrationFromEntry :: ContentMap -> T.Text -> IO (Either String Migration)
 migrationFromEntry contentMap name =
   (Right <$> process) `catch` (\(TarballStoreError s) -> return $ Left $ "Could not parse migration " ++ cs name ++ ":" ++ s)

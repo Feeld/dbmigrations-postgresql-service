@@ -3,7 +3,7 @@ module Cli (main) where
 
 import           Control.Monad.Except                    (runExceptT)
 import qualified Data.ByteString.Lazy                    as LBS
-import           Database.Schema.Server
+import           Database.Schema.Server                  (UpgradeRequest(..), genericServer)
 import           Database.Schema.Migrations.Tarball      (TarballContents(..))
 import           System.Environment                      (getArgs)
 import           System.Exit                             (exitFailure)
@@ -12,13 +12,16 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [connString] -> do
+    [connstring] -> do
       contents <- TarballContents <$> LBS.getContents
-      eResult <- runExceptT $ server $ UpgradeRequest connString contents
+      eResult <- runExceptT $ genericServer $ UpgradeRequest connstring contents
       case eResult of
-        Right _  -> pure ()
+        Right [] -> putStrLn "Database is up to date"
+        Right applied -> do
+          putStrLn "Applied:"
+          mapM_ print applied
         Left err -> do
-          putStrLn $ show err
+          print err
           exitFailure
     _ -> do
       putStrLn "Usage: dbmigrations-postgresql-cli connectionString"

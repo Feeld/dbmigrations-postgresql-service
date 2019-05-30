@@ -1,64 +1,80 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE TypeOperators     #-}
 module Database.Schema.Server
   ( server
+  , genericServer
   , UpgradeAPI
   , UpgradeRequest(..)
   )
 where
 
-import           Control.Exception.Lifted                (throwIO, catch)
+import           Control.Exception.Lifted                (catch)
+import           Control.Monad                           (forM, void, (<=<))
 import           Control.Monad.Trans.Control             (MonadBaseControl)
-import           Control.Monad.Except                    (MonadError)
-import           Control.Monad.Reader                    (forM_, runReaderT)
+import           Control.Monad.Except                    (MonadError, ExceptT, runExceptT)
+import           Control.Monad.Reader                    (runReaderT)
 import           Control.Monad.IO.Class                  (MonadIO(..))
-import qualified Data.ByteString.Lazy                    as LBS
+import           Data.Aeson                              (FromJSON, ToJSON)
 import           Data.String.Conversions                 (cs)
 import           Data.Text                               (Text)
 import qualified Data.Text                               as T
-import           Database.HDBC                           (SqlError, catchSql,
-                                                          seErrorMsg)
+import           Database.HDBC                           (SqlError)
 import           Database.HDBC.PostgreSQL                (connectPostgreSQL)
+import           Database.Schema.Migrations
+import           Database.Schema.Migrations.Migration    (Migration(mId))
 import           Database.Schema.Migrations.Backend.HDBC (hdbcBackend)
 import           Database.Schema.Migrations.Store
 import           Database.Schema.Migrations.Tarball      (TarballContents (..),
                                                           tarballStore, TarballStoreError)
-import           Moo.CommandInterface
-import           Moo.Core (AppState(..), CommandOptions(..),  Command(_cHandler))
+import           Database.Schema.Migrations.Backend
+import           GHC.Generics (Generic)
+import           Moo.CommandUtils (lookupMigration, withBackend)
+import           Moo.Core
 
 import           Servant
 
 data UpgradeRequest = UpgradeRequest
-  { _connectionString :: String
-  , _tarballData      :: TarballContents
-  }
+  { connString :: String
+  , tarball      :: TarballContents
+  } deriving (Generic, ToJSON, FromJSON)
 
 data UpgradeServerError =
     LoadError [MapValidationError]
   | TarballStoreError TarballStoreError
   | SqlError SqlError
+  deriving Show
 
 type UpgradeAPI = ReqBody '[JSON] UpgradeRequest
-               :> PostNoContent '[JSON] NoContent
+               :> Post '[JSON] [Text]
 
-server :: ( MonadBaseControl IO m
-          , MonadIO m
-          , MonadError ServantErr m
-          ) => UpgradeRequest -> m NoContent
-server req = do
+server :: Server UpgradeAPI
+server = hoistServer (Proxy @UpgradeAPI) nt genericServer
+  where
+  nt :: ExceptT UpgradeServerError Handler x -> Handler x
+  nt = either (throwError . toServantError) pure <=< runExceptT
 
-  connection <- liftIO $ connectPostgreSQL (_connectionString req)
+genericServer
+  :: ( MonadBaseControl IO m
+     , MonadIO m
+     , MonadError UpgradeServerError m
+     )
+  => UpgradeRequest -> m [Text]
+genericServer req = do
+
+  connection <- liftIO $ connectPostgreSQL (connString req)
   let backend = hdbcBackend connection
+  let command = upgrade
 
-  let command      = upgradeCommand
-
-  case tarballStore $ _tarballData req of
+  case tarballStore $ tarball req of
     Right store -> do
       loadedStoreData <- liftIO $ loadMigrations store
       case loadedStoreData of
-        Left es -> throwAsServantError $ LoadError es
+        Left es -> throwError $ LoadError es
         Right storeData -> do
           let st = AppState { _appOptions = commandOptions
                             , _appCommand = command
@@ -70,20 +86,32 @@ server req = do
                             , _appLinearMigrations = False
                             , _appTimestampFilenames = False
                             }
-          liftIO (runReaderT (_cHandler command storeData) st) `catch` (throwAsServantError . SqlError)
-          pure NoContent
-    Left err -> throwAsServantError $ TarballStoreError err
+          applied <- liftIO (runReaderT (upgradeCommand storeData) st)
+                      `catch` (throwError . SqlError)
+          pure $ map mId applied
+    Left err -> throwError $ TarballStoreError err
+{-# INLINEABLE genericServer #-}
 
-upgradeCommand :: Command
-Just upgradeCommand = findCommand "upgrade"
+upgrade :: Command
+upgrade = Command "upgrade" [] [] [] "" (void . upgradeCommand)
+
+upgradeCommand :: StoreData -> AppT [Migration]
+upgradeCommand storeData = withBackend $ \backend -> do
+  ensureBootstrappedBackend backend >> commitBackend backend
+  migrationNames <- missingMigrations backend storeData
+  if null migrationNames
+  then pure []
+  else do
+    applied <- fmap concat $ forM migrationNames $ \migrationName -> do
+        m <- lookupMigration storeData migrationName
+        toApply <- migrationsToApply storeData backend m
+        mapM_ (applyMigration backend) toApply
+        pure toApply
+    commitBackend backend
+    pure applied
 
 commandOptions :: CommandOptions
 commandOptions = CommandOptions Nothing False True
-
-throwAsServantError
-  :: ( MonadError ServantErr m )
-  =>  UpgradeServerError -> m a
-throwAsServantError = throwError . toServantError
 
 toServantError
   :: UpgradeServerError -> ServantErr
