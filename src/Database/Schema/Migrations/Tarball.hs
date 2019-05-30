@@ -16,17 +16,16 @@ import qualified Codec.Archive.Tar                    as Tar
 import qualified Codec.Compression.GZip               as Gzip
 import           Control.Exception                    (Exception, catch,
                                                        throwIO)
+import qualified Data.ByteString                      as BS
+import qualified Data.ByteString.Lazy                 as LBS
 import qualified Data.Map.Strict                      as M
 import           Data.Maybe
 import           Data.String.Conversions              (cs)
 import qualified Data.Text                            as T
 import           Data.Time                            ()
 import           Data.Time.Clock                      (UTCTime)
-
 import           Data.Yaml.YamlLight
-
-import qualified Data.ByteString                      as BS
-import qualified Data.ByteString.Lazy                 as LBS
+import           System.FilePath                      (takeFileName)
 
 type ContentMap = M.Map T.Text BS.ByteString
 
@@ -45,14 +44,14 @@ tarballStore contents =
         { loadMigration = migrationFromEntry entryMap
         , saveMigration = \_ -> throwIO NotImplemented
         , getMigrations = pure $ mapMaybe (T.stripSuffix ".txt") $ M.keys entryMap
-        , fullMigrationName = pure . cs . T.dropEnd 4
+        , fullMigrationName = pure . cs
         }
     Left (e, _) -> Left (InvalidTarballError (show e))
   where
   step :: ContentMap -> Tar.Entry -> ContentMap
   step !existingMap entry =
     case entryBs entry of
-      Just bs -> M.insert (cs $ Tar.entryPath entry) bs existingMap
+      Just bs -> M.insert (cs $ takeFileName $ Tar.entryPath entry) bs existingMap
       Nothing -> existingMap
 
   entryBs :: Tar.Entry -> Maybe BS.ByteString
@@ -66,7 +65,8 @@ tarballStore contents =
     $ Gzip.decompress
     $ unTarballContents contents
 
-newtype TarballContents = TBContents { unTarballContents :: LBS.ByteString }
+newtype TarballContents = TarballContents
+  { unTarballContents :: LBS.ByteString }
 
 
 -- make everything compile
@@ -78,7 +78,7 @@ migrationFromEntry contentMap name =
   (Right <$> process) `catch` (\(TarballStoreError s) -> return $ Left $ "Could not parse migration " ++ cs name ++ ":" ++ s)
   where
     process =
-      case M.lookup name contentMap of
+      case M.lookup (name<>".txt") contentMap of
           Just bs -> do
             yaml <- parseYamlBytes bs
             -- Convert yaml structure into basic key/value map
