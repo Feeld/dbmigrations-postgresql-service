@@ -68,11 +68,15 @@ executable dbmigrations-postgresql-service
     base ^>=4.12.0.0,
     bytestring,
     dbmigrations,
-    text,
+    dbmigrations-postgresql-service,
+    envy,
     HDBC,
     HDBC-postgresql,
-    string-conversions,
     mtl,
-    dbmigrations-postgresql-service
+    string-conversions,
+    servant-server,
+    text,
+    wai,
+    warp
   hs-source-dirs:      exes
   default-language:    Haskell2010
