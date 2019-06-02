@@ -17,7 +17,7 @@ import           Database.Schema.Migrations.Tarball      (TarballContents (..),
                                                           TarballStoreError,
                                                           tarballStore)
 
-import           Control.Exception.Lifted                (catch)
+import           Control.Exception.Lifted                (handle)
 import           Control.Monad                           (forM, (<=<))
 import           Control.Monad.Except                    (ExceptT, MonadError,
                                                           runExceptT,
@@ -53,7 +53,7 @@ import           Servant                                 ((:>), Handler, JSON,
                                                           Post, ReqBody,
                                                           ServantErr (..),
                                                           Server, err400,
-                                                          hoistServer)
+                                                          err422, hoistServer)
 
 data UpgradeRequest = UpgradeRequest
   { connString :: String
@@ -82,14 +82,15 @@ genericServer
      , MonadError UpgradeServerError m
      )
   => UpgradeRequest -> m [Text]
-genericServer req =
-  case tarballStore $ tarball req of
+genericServer req = do
+  eStore <- liftIO $ tarballStore $ tarball req
+  case eStore of
     Right store -> do
       loadedStoreData <- liftIO $ loadMigrations store
       case loadedStoreData of
         Left es -> throwError $ LoadError es
-        Right storeData -> do
-          connection <- liftIO $ connectPostgreSQL (connString req)
+        Right storeData -> handle (throwError . SqlError) $ liftIO $ do
+          connection <- connectPostgreSQL (connString req)
           let st = AppState
                     { _appOptions = CommandOptions
                         { _configFilePath = Nothing
@@ -105,8 +106,7 @@ genericServer req =
                     , _appLinearMigrations = False
                     , _appTimestampFilenames = False
                     }
-          applied <- liftIO (runReaderT (upgradeCommand storeData) st)
-                      `catch` (throwError . SqlError)
+          applied <- runReaderT (upgradeCommand storeData) st
           pure $ map mId applied
     Left err -> throwError $ TarballStoreError err
 {-# INLINEABLE genericServer #-}
@@ -136,4 +136,4 @@ toServantError
 toServantError (LoadError errors)      = err400 {errBody = msg }
   where msg = cs $ T.unlines $ map (cs . show) errors
 toServantError (TarballStoreError err) = err400 {errBody = cs $ show err}
-toServantError (SqlError err)          = err400 {errBody = cs $ show err}
+toServantError (SqlError err)          = err422 {errBody = cs $ show err}

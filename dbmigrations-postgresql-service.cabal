@@ -25,23 +25,24 @@ library
     aeson,
     base ^>=4.12.0.0,
     base64-bytestring,
-    tar ^>=0.5.1.0,
-    zlib ^>=0.6.2,
+    bytestring ^>=0.10.8.2,
     containers ^>=0.6.0.1,
+    dbmigrations,
+    deepseq,
+    filepath,
+    HDBC,
+    HDBC-postgresql,
+    lifted-base,
+    monad-control,
+    mtl,
+    servant,
+    servant-server,
     string-conversions ^>=0.4.0.1,
+    tar ^>=0.5.1.0,
     text ^>=1.2.3.1,
     time ^>=1.8.0.2,
     yaml-light ^>=0.1.4,
-    bytestring ^>=0.10.8.2,
-    filepath,
-    dbmigrations,
-    HDBC,
-    HDBC-postgresql,
-    mtl,
-    servant-server,
-    servant,
-    lifted-base,
-    monad-control
+    zlib ^>=0.6.2,
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options: -Wall
@@ -73,10 +74,36 @@ executable dbmigrations-postgresql-service
     HDBC,
     HDBC-postgresql,
     mtl,
-    string-conversions,
     servant-server,
+    string-conversions,
     text,
     wai,
     warp
   hs-source-dirs:      exes
   default-language:    Haskell2010
+
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+  hs-source-dirs:
+      spec
+  ghc-options: -Wall -fprint-potential-instances -fwarn-redundant-constraints -funbox-strict-fields
+  build-depends:
+      base
+    , base64-bytestring
+    , bytestring
+    , dbmigrations-postgresql-service
+    , hspec
+    , hspec-core
+    , hspec-wai
+    , hspec-wai-json
+    , http-types
+    , servant-server
+    , string-conversions
+    , text
+    , wai-extra
+    , zlib
+    , tar
+    , neat-interpolation
+  default-language: Haskell2010

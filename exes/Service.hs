@@ -29,4 +29,4 @@ upgradeApi = Proxy
 
 newtype Port = Port Int
 instance FromEnv Port where
-  fromEnv = Port <$> env "DBM_PORT"
+  fromEnv = Port <$> env "MIGRATION_SERVICE_PORT"

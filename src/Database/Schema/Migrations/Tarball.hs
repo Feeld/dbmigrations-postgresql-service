@@ -14,7 +14,10 @@ import           Database.Schema.Migrations.Store
 
 import qualified Codec.Archive.Tar                    as Tar
 import qualified Codec.Compression.GZip               as Gzip
-import           Control.Exception                    (Exception, catch,
+import qualified Codec.Compression.Zlib.Internal      as Gzip (DecompressError)
+import           Control.DeepSeq                      (NFData (..), force)
+import           Control.Exception                    (Exception, Handler (..),
+                                                       catch, catches, evaluate,
                                                        throwIO)
 import           Data.Aeson                           (FromJSON (..),
                                                        ToJSON (..),
@@ -35,22 +38,41 @@ type ContentMap = M.Map T.Text BS.ByteString
 
 data TarballStoreError
   = NotImplemented
-  | TarballStoreError String
-  | InvalidTarballError String
+  | TarballStoreError !String
+  | InvalidTarballError !Tar.FormatError
+  | DecompressError !Gzip.DecompressError
   deriving (Show, Exception)
 
+instance NFData TarballStoreError where
+  rnf NotImplemented           = ()
+  rnf (TarballStoreError !_)   = ()
+  rnf (InvalidTarballError !_) = ()
+  rnf (DecompressError !_)     = ()
 
-tarballStore :: TarballContents -> Either TarballStoreError MigrationStore
-tarballStore contents =
-  case eContentMap of
-    Right entryMap ->
+tarballStore :: TarballContents -> IO (Either TarballStoreError MigrationStore)
+tarballStore contents = do
+
+  eContentMap <-
+      flip catches
+      [ Handler $ \e -> pure $ Left (DecompressError e)
+      ]
+    $ evaluate
+    $ force
+    $ Right
+    $ Tar.foldlEntries step mempty
+    $ Tar.read
+    $ Gzip.decompress
+    $ unTarballContents contents
+  pure $ case eContentMap of
+    Right (Right entryMap) ->
       Right MigrationStore
         { loadMigration = migrationFromEntry entryMap
         , saveMigration = \_ -> throwIO NotImplemented
         , getMigrations = pure $ mapMaybe (T.stripSuffix ".txt") $ M.keys entryMap
         , fullMigrationName = pure . cs
         }
-    Left (e, _) -> Left (InvalidTarballError (show e))
+    Right (Left (e, _)) -> Left (InvalidTarballError e)
+    Left err -> Left err
   where
   step :: ContentMap -> Tar.Entry -> ContentMap
   step !existingMap entry =
@@ -63,11 +85,6 @@ tarballStore contents =
     case Tar.entryContent entry of
       Tar.NormalFile bs _ -> Just $ LBS.toStrict bs
       _                   -> Nothing
-  eContentMap
-    = Tar.foldlEntries step mempty
-    $ Tar.read
-    $ Gzip.decompress
-    $ unTarballContents contents
 
 newtype TarballContents = TarballContents
   { unTarballContents :: LBS.ByteString }
