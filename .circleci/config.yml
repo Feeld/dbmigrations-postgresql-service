@@ -20,16 +20,22 @@ jobs:
       - restore_cache:
           key: v1-nix-cache
       - run:
-          name: Build, test and create linux x86-64 executable
+          name: Build, test and create docker image
           command: |
             set -u
+            IMAGE_NAME="fld-production/dbmigrations-postgresql-service"
+            IMAGE_TAG=$CIRCLE_SHA1
+            IMAGE_NAME_AND_TAG="${IMAGE_NAME}:${IMAGE_TAG}"
 
-            EXECUTABLE="$(nix-build nix -A dbmigrations-postgresql-service --no-out-link)/bin/dbmigrations-postgresql-service"
-            echo "Executable size: $(ls -lh $EXECUTABLE | cut -f5 -d' ')"
+            echo "Creating docker image \"${IMAGE_NAME_AND_TAG}\""
+            IMAGE_FILE=$(nix-build nix/docker.nix --no-out-link \
+              --argstr tag $IMAGE_TAG \
+              --argstr name $IMAGE_NAME \
+              )
+            echo "Compressed image size: $(ls -lh $IMAGE_FILE | cut -f5 -d' ')"
 
             mkdir -p ${WORKSPACE_DIR}
-            hash=$(echo -n ${CIRCLE_SHA1} | cut -c1-6)
-            ln $EXECUTABLE ${WORKSPACE_DIR}/dbmigrations-postgresql-service-${hash}
+            ln $IMAGE_FILE ${WORKSPACE_DIR}/docker-image.tar.gz
       - run:
           name: Archive and sign build artifacts.
           command: |
@@ -55,23 +61,6 @@ jobs:
           paths:
             - /src/.nix-cache
             - /src/.cache
-      - run:
-          name: Build, test and create docker image
-          command: |
-            set -u
-            IMAGE_NAME="fld-production/dbmigrations-postgresql-service"
-            IMAGE_TAG=$CIRCLE_SHA1
-            IMAGE_NAME_AND_TAG="${IMAGE_NAME}:${IMAGE_TAG}"
-
-            echo "Creating docker image \"${IMAGE_NAME_AND_TAG}\""
-            IMAGE_FILE=$(nix-build nix/docker.nix --no-out-link \
-              --argstr tag $IMAGE_TAG \
-              --argstr name $IMAGE_NAME \
-              )
-            echo "Compressed image size: $(ls -lh $IMAGE_FILE | cut -f5 -d' ')"
-
-            mkdir -p ${WORKSPACE_DIR}
-            ln $IMAGE_FILE ${WORKSPACE_DIR}/docker-image.tar.gz
 
       - store_artifacts:
           path: *WORKSPACE_DIR
