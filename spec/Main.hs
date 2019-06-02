@@ -29,7 +29,7 @@ main :: IO ()
 main = hspec spec
 
 app :: Application
-app = serve (Proxy @UpgradeAPI) server
+app = serve (Proxy @UpgradeAPI) (server "mySecret")
 
 
 spec :: Spec
@@ -76,7 +76,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` [json|["initial", "second", "third"]|]
 
     it "responds with 200 and does nothing if no migrations to apply" $ do
@@ -86,8 +87,20 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` [json|[]|]
+
+    it "responds with 403 if invalid accessToken" $ do
+      Just connString <- liftIO $ lookupEnv "DBM_DATABASE"
+      let tarball :: Text
+          tarball = cs . B64.encode $ Gzip.compress $ Tar.write [ ]
+      postJson "/" [json|{
+        connString: #{connString},
+        tarball: #{tarball},
+        test: true,
+        accessToken: "badSecret"
+        }|] `shouldRespondWith` 403
 
     it "responds with 422 if migration has bad sql" $ do
       Just connString <- liftIO $ lookupEnv "DBM_DATABASE"
@@ -105,7 +118,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 422
 
     it "responds with 422 if bad connString" $ do
@@ -123,7 +137,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: "dbname=lalala",
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 422
 
     it "responds with 400 if tarball is missing migrations" $ do
@@ -142,7 +157,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if a migration has malformed yaml" $ do
@@ -161,7 +177,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if a migration yaml has a wrongly typed field" $ do
@@ -180,7 +197,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if a migration yaml is not a mapping" $ do
@@ -199,7 +217,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if a migration yaml has an unrecognized field" $ do
@@ -219,7 +238,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if gzip corrupted" $ do
@@ -238,7 +258,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
     it "responds with 400 if tarball corrupted" $ do
@@ -257,7 +278,8 @@ spec = before (pure app) $
       postJson "/" [json|{
         connString: #{connString},
         tarball: #{tarball},
-        test: true
+        test: true,
+        accessToken: "mySecret"
         }|] `shouldRespondWith` 400
 
 postJson :: BS.ByteString -> LBS.ByteString -> WaiSession SResponse

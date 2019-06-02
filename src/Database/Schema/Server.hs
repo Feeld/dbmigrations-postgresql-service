@@ -53,25 +53,28 @@ import           Servant                                 ((:>), Handler, JSON,
                                                           Post, ReqBody,
                                                           ServantErr (..),
                                                           Server, err400,
-                                                          err422, hoistServer)
+                                                          err403, err422,
+                                                          hoistServer)
 
 data UpgradeRequest = UpgradeRequest
-  { connString :: String
-  , tarball    :: TarballContents
-  , test       :: Bool
+  { connString  :: String
+  , tarball     :: TarballContents
+  , test        :: Bool
+  , accessToken :: Text
   } deriving (Generic, ToJSON, FromJSON)
 
 data UpgradeServerError =
     LoadError [MapValidationError]
   | TarballStoreError TarballStoreError
   | SqlError SqlError
+  | Unauthorized
   deriving Show
 
 type UpgradeAPI = ReqBody '[JSON] UpgradeRequest
                :> Post '[JSON] [Text]
 
-server :: Server UpgradeAPI
-server = hoistServer (Proxy @UpgradeAPI) nt genericServer
+server :: Text -> Server UpgradeAPI
+server = hoistServer (Proxy @UpgradeAPI) nt . genericServer
   where
   nt :: ExceptT UpgradeServerError Handler x -> Handler x
   nt = either (throwError . toServantError) pure <=< runExceptT
@@ -81,8 +84,10 @@ genericServer
      , MonadIO m
      , MonadError UpgradeServerError m
      )
-  => UpgradeRequest -> m [Text]
-genericServer req = do
+  => Text -> UpgradeRequest -> m [Text]
+genericServer token req
+  | token /= accessToken req = throwError Unauthorized
+genericServer _token req = do
   eStore <- liftIO $ tarballStore $ tarball req
   case eStore of
     Right store -> do
@@ -137,3 +142,4 @@ toServantError (LoadError errors)      = err400 {errBody = msg }
   where msg = cs $ T.unlines $ map (cs . show) errors
 toServantError (TarballStoreError err) = err400 {errBody = cs $ show err}
 toServantError (SqlError err)          = err422 {errBody = cs $ show err}
+toServantError Unauthorized            = err403 {errBody = "Invalid accessToken"}

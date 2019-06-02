@@ -18,7 +18,7 @@ main = do
     [connstring] -> do
       contents <- TarballContents <$> LBS.getContents
       isTesting <- isJust <$> lookupEnv "DBM_TEST"
-      eResult <- runExceptT $ genericServer $ UpgradeRequest connstring contents isTesting
+      eResult <- runExceptT $ genericServer "dummy" $ UpgradeRequest connstring contents isTesting "dummy"
       case eResult of
         Right [] -> putStrLn "Database is up to date"
         Right applied -> do
