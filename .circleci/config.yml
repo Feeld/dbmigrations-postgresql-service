@@ -24,7 +24,7 @@ jobs:
           command: |
             set -u
 
-            EXECUTABLE="$(nix-build nix -A dbigrations-postgresql-service --no-out-link)/bin/dbigrations-postgresql-service"
+            EXECUTABLE="$(nix-build nix -A dbmigrations-postgresql-service --no-out-link)/bin/dbmigrations-postgresql-service"
             echo "Executable size: $(ls -lh $EXECUTABLE | cut -f5 -d' ')"
 
             mkdir -p ${WORKSPACE_DIR}
