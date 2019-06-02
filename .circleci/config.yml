@@ -18,7 +18,7 @@ jobs:
     steps:
       - checkout
       - restore_cache:
-          key: v1-nix-cache
+          key: v2-nix-cache
       - run:
           name: Build, test and create docker image
           command: |
@@ -57,7 +57,7 @@ jobs:
             echo "Signing local cache ..."
             nix sign-paths -v --store "file://$CACHE" -k $KEYFILE --all
       - save_cache:
-          key: v1-nix-cache-{{ .Revision }}
+          key: v2-nix-cache-{{ .Revision }}
           paths:
             - /src/.nix-cache
             - /src/.cache
