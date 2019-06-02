@@ -5,3 +5,5 @@ dist
 dist-newstyle
 .ghc.environment.*
 .sw?
+result*
+*.sw?

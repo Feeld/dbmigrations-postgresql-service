@@ -28,7 +28,7 @@ upgradeApi = Proxy
 
 newtype Port = Port Int
 instance FromEnv Port where
-  fromEnv = Port <$> env "MIGRATION_SERVICE_PORT"
+  fromEnv = Port <$> env "PORT"
 
 newtype AccessToken = AccessToken Text
 instance FromEnv AccessToken where

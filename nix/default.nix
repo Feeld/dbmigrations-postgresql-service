@@ -31,6 +31,6 @@ in import nix-build (args // {
     {
       dbmigrations-postgresql-service =
         self.haskell.lib.justStaticExecutables
-          self.myHaskellPackages.dbmigrations-postgresql-service;
+          self.myGlibcHaskellPackages.dbmigrations-postgresql-service;
     };
   })
