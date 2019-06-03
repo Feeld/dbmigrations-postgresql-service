@@ -1,9 +1,18 @@
 version: 2.1
 
+IMAGE_REPO: &IMAGE_REPO gcr.io
+GCR_PROJECT_ID: &GCR_PROJECT_ID fld-staging
+GCS_PROJECT_ID: &GCS_PROJECT_ID fld-production
+GOOGLE_COMPUTE_REGION: &GOOGLE_COMPUTE_REGION us-east4
+
 # Used to pass data between jobs.
 # https://circleci.com/docs/2.0/configuration-reference/#persist_to_workspace
 # Must be absolute path or relative path from working_directory.
 WORKSPACE_DIR: &WORKSPACE_DIR /tmp/workspace
+
+# Spinnaker webhook that triggers a pipeline deployment
+SPINNAKER_WEBHOOK_URL: &SPINNAKER_WEBHOOK_URL https://spinnaker-api.prd.fld.systems/webhooks/webhook/dbm-service
+
 
 jobs:
   build:
@@ -23,7 +32,7 @@ jobs:
           name: Build, test and create docker image
           command: |
             set -u
-            IMAGE_NAME="fld-production/dbmigrations-postgresql-service"
+            IMAGE_NAME="fld-staging/dbm-service"
             IMAGE_TAG=$CIRCLE_SHA1
             IMAGE_NAME_AND_TAG="${IMAGE_NAME}:${IMAGE_TAG}"
 
@@ -69,8 +78,153 @@ jobs:
           root: *WORKSPACE_DIR
           paths: .
 
+  deploy:
+    docker:
+      - image: avalverde/feeld-circleci-nix
+
+    working_directory: /src
+
+    environment:
+      GCR_PROJECT_ID: *GCR_PROJECT_ID
+      WORKSPACE_DIR: *WORKSPACE_DIR
+      IMAGE_REPO: *IMAGE_REPO
+      GCS_PROJECT_ID: *GCS_PROJECT_ID
+      GOOGLE_COMPUTE_REGION: *GOOGLE_COMPUTE_REGION
+      SPINNAKER_WEBHOOK_URL: *SPINNAKER_WEBHOOK_URL
+
+    steps:
+      - checkout
+      - restore_cache:
+          key: v2-nix-cache
+      - attach_workspace:
+          at: *WORKSPACE_DIR
+      - run:
+          name: Set environment variables
+          command: |
+            echo 'export IMAGE_NAME="${GCR_PROJECT_ID}/dbm-service"' >> $BASH_ENV
+            echo 'export IMAGE_TAG=$CIRCLE_SHA1' >> $BASH_ENV
+            echo 'export IMAGE_NAME_AND_TAG="${IMAGE_NAME}:${IMAGE_TAG}"' >> $BASH_ENV
+            echo 'export MANIFEST_YAML=/dev/shm/manifest.dbm-service.${CIRCLE_SHA1}.yml' >> $BASH_ENV
+            echo 'export BUCKET_PATH="gs://$GCS_PROJECT_ID/manifests/dbm-service"' >> $BASH_ENV
+      - run:
+          name: Push docker image to registry
+          command: |
+            set -u
+
+            echo "Pushing docker image \"${IMAGE_NAME_AND_TAG}\" to registry \"${IMAGE_REPO}\""
+            userPass=$(echo -n "_json_key:${GCR_SERVICE_ACCOUNT}" | base64 | tr -d '\n')
+            mkdir -p /root/.docker
+            echo "{\"auths\":{\"https://${IMAGE_REPO}\":{\"auth\":\"${userPass}\"}}}" \
+              > /root/.docker/config.json
+            skopeo copy \
+              docker-archive:${WORKSPACE_DIR}/docker-image.tar.gz \
+              docker://${IMAGE_REPO}/${IMAGE_NAME_AND_TAG}
+
+      - run:
+          name: Create k8 manifest
+          command: |
+            set -u
+
+            echo "$GIT_CRYPT_KEY" | base64 -d > /dev/shm/git-crypt.key
+            git-crypt unlock /dev/shm/git-crypt.key
+
+
+            if [[ $CIRCLE_BRANCH =~ (.+)--temp-deploy/([a-zA-Z0-9_-]+)$ ]]; then
+              # temp-deploy branches
+              ENV_NAME=${BASH_REMATCH[2]}
+              # namespace identifier cannot contain UPPER CASE or /
+              NAMESPACE=$(echo ${BASH_REMATCH[1]} | tr '[:upper:]/' '[:lower:]-')
+            else
+              # master and production
+              # with env name the same as branch name
+              ENV_NAME=${CIRCLE_BRANCH}
+              NAMESPACE=default
+            fi
+
+            echo "ENV_NAME: ${ENV_NAME}"
+            echo "NAMESPACE: ${NAMESPACE}"
+
+            items=$(nix eval -f nix/kube --json result \
+              --argstr tag "$IMAGE_TAG" \
+              --argstr name "$IMAGE_NAME" \
+              --argstr registry "$IMAGE_REPO" \
+              --argstr branch "$CIRCLE_BRANCH" \
+              --argstr namespace "$NAMESPACE" \
+              | jq -c '.items[]')
+            # Spinnaker does not understand k8 objects of type 'List' so put
+            # them all together in a yaml separated by '---' like helm does
+
+            # Using read to only split on newlines (and not on spaces which
+            # migth occur in values).
+            while read -r item; do
+              echo ---
+              json2yaml - \<<< $item
+            done \<<< $items > ${MANIFEST_YAML}
+
+            # Use hash of the manifest as part file name since the same commit
+            # on different branch can end up producting differnt manifest
+            # (for example on production we use different credentials then
+            # on master). Same commit on different branch will happen for
+            # example if we do a fast-forward merge from master to production.
+            MANIFEST_SHA=$(nix hash-file --base32 $MANIFEST_YAML)
+            echo "export GCS_MANIFEST_YAML=${BUCKET_PATH}/manifest.dbm-service.${MANIFEST_SHA}.yml" >> $BASH_ENV
+
+
+      - run:
+          name: Push k8 manifest to gcloud.
+          # 1. Set credentials
+          # 2. set project
+          # 3. set region
+          # 4. push manifest
+          command: |
+            set -u
+            gcloud --version
+            echo $GCS_SERVICE_ACCOUNT | gcloud auth activate-service-account --key-file=-
+            gcloud --quiet config set project ${GCS_PROJECT_ID}
+            gcloud --quiet config set compute/region ${GOOGLE_COMPUTE_REGION}
+            echo "Pushing k8 manifest to \"${GCS_MANIFEST_YAML}\""
+            gsutil cp -n "${MANIFEST_YAML}" "${GCS_MANIFEST_YAML}"
+
+      - run:
+          name: Ping Spinnaker webhook
+          command: |
+            set -u
+            cat\<<EOF | curl -X POST -H "content-type: application/json" "$SPINNAKER_WEBHOOK_URL" --data @-
+              {
+                "artifacts": [
+                  {
+                    "type" : "gcs/object",
+                    "name" : "${GCS_MANIFEST_YAML}",
+                    "reference" : "${GCS_MANIFEST_YAML}"
+                  }
+                ],
+                "branch" : "${CIRCLE_BRANCH}",
+                "commit_sha" : "${CIRCLE_SHA1}",
+                "token" : "${SPINNAKER_WEBHOOK_TOKEN}"
+              }
+            EOF
+
 workflows:
   version: 2
   build_deploy:
     jobs:
       - build
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - master
+                # the branch name should end with --temp-deploy/ENV_NAME
+                # ie: ag/feature/whatever--temp-deploy/master
+                # which will user the master/environment.json file as source
+                # of envirimoent variables when creating k8s manifest.
+                # NOTE that for the time being a spinnaker pipeline needs to
+                # be configured manually to listen for events from given
+                # branch.
+                # The prefix of the branch will be used to determine the k8s
+                # namespace to which to deploy. Slashes ("/") in the name will
+                # be replaced by "-". In the above example the namespace would
+                # be set to: ag-feature-whatever
+                - /.*--temp-deploy/[a-zA-Z0-9_-]+$/
