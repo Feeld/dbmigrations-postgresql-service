@@ -8,7 +8,6 @@ let
 in with pkgs;
 dockerTools.buildImage {
   inherit tag name;
-  created = "now";
 
   contents = [ dbmigrations-postgresql-service suExec ];
 
