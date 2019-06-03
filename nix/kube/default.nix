@@ -72,7 +72,8 @@ rec {
           metadata =  { inherit namespace; };
           type = "Opaque";
           data = {
-            MIGRATION_ACCESS_TOKEN = builtins.readFile ./secrets/accessToken;
+            MIGRATION_ACCESS_TOKEN =
+              kubenix.lib.toBase64 (builtins.readFile ./secrets/accessToken);
           };
         };
 
