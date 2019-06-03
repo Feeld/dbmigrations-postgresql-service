@@ -8,7 +8,7 @@ nix eval -f nix/kube --json result \
 { tag ? "latest"
 , branch ? "master"
 , name ? "fld-staging/dbm-service"
-, namespace ? "default"
+, namespace ? "devops"
 , registry ? "gcr.io"
 , apiPort ? 8080
 , replicas ? 1
@@ -31,12 +31,12 @@ let
 
       if namespace == "default"
         then
-          [ "${subdomain}.fld.services"
-            "${subdomain}.fld.systems"
+          [ "dbm-service.${subdomain}.fld.services"
+            "dbm-service.${subdomain}.fld.systems"
           ]
         else
-          [ "${namespace}.${subdomain}.fld.services"
-            "${namespace}.${subdomain}.fld.systems"
+          [ "dbm-service.${namespace}.${subdomain}.fld.services"
+            "dbm-service.${namespace}.${subdomain}.fld.systems"
           ]
 
     else [ host ];
@@ -48,10 +48,10 @@ let
     labels =  {
       # Set of recommended labels
       # https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/#labels
-      "app.kubernetes.io/name" = "devops";
+      "app.kubernetes.io/name" = "dbm-service";
       "app.kubernetes.io/instance" = "dbm-service";
       "app.kubernetes.io/component" = "http-service";
-      "app.kubernetes.io/part-of" = "devops";
+      "app.kubernetes.io/part-of" = "dbm-service";
     };
   };
 
@@ -78,16 +78,16 @@ rec {
 
         kubernetes.api.namespaces."${namespace}" = {};
 
-        kubernetes.api.deployments.devops = {
+        kubernetes.api.deployments.dbm-service = {
           metadata = serviceMetadata;
 
           spec = {
             inherit replicas;
-            selector.matchLabels.component = "devops";
+            selector.matchLabels.component = "dbm-service";
             template = {
-              metadata.labels.component = "devops";
+              metadata.labels.component = "dbm-service";
               spec = {
-                containers.devops = {
+                containers.dbm-service = {
                   image = config.docker.images.dbm-service.path;
                   imagePullPolicy = "IfNotPresent";
                   ports =
@@ -110,7 +110,7 @@ rec {
                   # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#define-a-liveness-command
                   # livenessProbe = {
                   #   httpGet = {
-                  #     path = "/devops/liveness";
+                  #     path = "/dbm-service/liveness";
                   #     port = apiPort;
                   #   };
                   #   initialDelaySeconds = 5;
@@ -122,7 +122,7 @@ rec {
                   # https =//kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#define-readiness-probes
                   # readinessProbe = {
                   #   httpGet = {
-                  #     path = "/devops/readiness";
+                  #     path = "/dbm-service/readiness";
                   #     port = apiPort;
                   #   };
                   #   initialDelaySeconds = 2;
@@ -139,7 +139,7 @@ rec {
           };
         };
 
-        kubernetes.api.services.devops = {
+        kubernetes.api.services.dbm-service = {
           metadata = serviceMetadata;
           spec = {
             ports = map ({port,name}: {
@@ -147,11 +147,11 @@ rec {
               protocol = "TCP";
               targetPort = port;
             }) [ {port=apiPort; name="http";} ];
-            selector.component = "devops";
+            selector.component = "dbm-service";
           };
         };
 
-        kubernetes.api.ingresses.devops = {
+        kubernetes.api.ingresses.dbm-service = {
           metadata = {
             inherit (serviceMetadata) namespace;
             annotations = serviceMetadata.labels // {
@@ -173,7 +173,7 @@ rec {
                   { paths =
                     [ { path = "/";
                         backend = {
-                          serviceName = "devops";
+                          serviceName = "dbm-service";
                           servicePort = apiPort;
                           };
                        }
