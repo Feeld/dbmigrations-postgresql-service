@@ -28,7 +28,7 @@ jobs:
             IMAGE_NAME_AND_TAG="${IMAGE_NAME}:${IMAGE_TAG}"
 
             echo "Creating docker image \"${IMAGE_NAME_AND_TAG}\""
-            IMAGE_FILE=$(nix-build nix/docker.nix --no-out-link \
+            IMAGE_FILE=$(nix-build nix/kube/image.nix --no-out-link \
               --argstr tag $IMAGE_TAG \
               --argstr name $IMAGE_NAME \
               )
