@@ -51,8 +51,8 @@ jobs:
             export KEYFILE=/dev/shm/pk
             (umask 0077 && echo ${NIX_PRIVATE_KEY} > $KEYFILE)
 
-            NIXOPTS="nix -A dbmigrations-postgresql-service"
-            CACHE=/src/.nix-cache
+            export NIXOPTS="nix -A dbmigrations-postgresql-service"
+            export CACHE=/src/.nix-cache
 
             echo "Building..."
             out=$(nix-build --no-out-link $NIXOPTS)
