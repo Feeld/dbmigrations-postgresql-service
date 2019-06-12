@@ -1,10 +1,11 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 module Database.Schema.Server
   ( server
   , genericServer
@@ -17,7 +18,7 @@ import           Database.Schema.Migrations.Tarball      (TarballContents (..),
                                                           TarballStoreError,
                                                           tarballStore)
 
-import           Control.Exception.Lifted                (handle)
+import           Control.Exception.Lifted                (catch, handle)
 import           Control.Monad                           (forM, (<=<))
 import           Control.Monad.Except                    (ExceptT, MonadError,
                                                           runExceptT,
@@ -123,7 +124,8 @@ upgradeCommand :: StoreData -> AppT [Migration]
 upgradeCommand storeData = do
   isTesting <-  _test <$> asks _appOptions
   withBackend $ \backend -> do
-    ensureBootstrappedBackend backend >> commitBackend backend
+    (ensureBootstrappedBackend backend >> commitBackend backend)
+      `catch` \(_ :: SqlError) -> pure () -- ignore error if installed_migrations table already exists
     migrationNames <- missingMigrations backend storeData
     if null migrationNames
     then pure []
