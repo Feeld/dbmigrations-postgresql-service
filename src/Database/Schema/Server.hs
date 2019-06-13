@@ -12,6 +12,7 @@ module Database.Schema.Server
   , genericServer
   , UpgradeAPI
   , UpgradeRequest(..)
+  , UpgradeResponse(..)
   )
 where
 

@@ -1,8 +1,10 @@
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Cli (main) where
 
 import           Database.Schema.Migrations.Tarball (TarballContents (..))
 import           Database.Schema.Server             (UpgradeRequest (..),
+                                                     UpgradeResponse (..),
                                                      genericServer)
 
 import           Control.Monad.Except               (runExceptT)
@@ -20,10 +22,11 @@ main = do
       isTesting <- isJust <$> lookupEnv "DBM_TEST"
       eResult <- runExceptT $ genericServer "dummy" $ UpgradeRequest connstring contents isTesting "dummy"
       case eResult of
-        Right [] -> putStrLn "Database is up to date"
-        Right applied -> do
+        Right UpgradeResponse{appliedMigrations=[]} ->
+          putStrLn "Database is up to date"
+        Right UpgradeResponse{appliedMigrations} -> do
           putStrLn "Applied:"
-          mapM_ print applied
+          mapM_ print appliedMigrations
         Left err -> do
           print err
           exitFailure
