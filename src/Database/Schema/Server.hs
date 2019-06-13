@@ -1,10 +1,12 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
 module Database.Schema.Server
   ( server
   , genericServer
@@ -70,8 +72,15 @@ data UpgradeServerError =
   | Unauthorized
   deriving Show
 
+newtype UpgradeResponse = UpgradeResponse
+  { appliedMigrations :: [Text]
+  }
+  deriving newtype (Eq, Show)
+  deriving stock Generic
+  deriving anyclass (ToJSON, FromJSON)
+
 type UpgradeAPI = ReqBody '[JSON] UpgradeRequest
-               :> Post '[JSON] [Text]
+               :> Post '[JSON] UpgradeResponse
 
 server :: Text -> Server UpgradeAPI
 server = hoistServer (Proxy @UpgradeAPI) nt . genericServer
@@ -84,7 +93,7 @@ genericServer
      , MonadIO m
      , MonadError UpgradeServerError m
      )
-  => Text -> UpgradeRequest -> m [Text]
+  => Text -> UpgradeRequest -> m UpgradeResponse
 genericServer token req
   | token /= accessToken req = throwError Unauthorized
 genericServer _token req = do
@@ -112,7 +121,7 @@ genericServer _token req = do
                     , _appTimestampFilenames = False
                     }
           applied <- runReaderT (upgradeCommand storeData) st
-          pure $ map mId applied
+          pure $ UpgradeResponse $ map mId applied
     Left err -> throwError $ TarballStoreError err
 {-# INLINEABLE genericServer #-}
 

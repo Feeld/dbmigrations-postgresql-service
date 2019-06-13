@@ -3,8 +3,7 @@
 , fullyStatic ? true
 }@args:
 let
-  nix-build = builtins.fetchTarball "https://github.com/Feeld/nix-build/archive/d692d8fbaa54353d00ee9ece08c53eaad2de8ac8.tar.gz";
-  
+  nix-build = builtins.fetchTarball "https://github.com/Feeld/nix-build/archive/386fef2393fbb3dc03af5c9eabb7c226a9b2b833.tar.gz";
 in import nix-build (args // {
   haskellOverlay = pkgs: self: super:
     with pkgs.haskell.lib;

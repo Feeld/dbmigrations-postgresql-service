@@ -78,7 +78,7 @@ spec = before (pure app) $
         tarball: #{tarball},
         test: true,
         accessToken: "mySecret"
-        }|] `shouldRespondWith` [json|["initial", "second", "third"]|]
+        }|] `shouldRespondWith` [json|{appliedMigrations:["initial", "second", "third"]}|]
 
     it "responds with 200 and does nothing if no migrations to apply" $ do
       Just connString <- liftIO $ lookupEnv "DBM_DATABASE"
@@ -89,7 +89,7 @@ spec = before (pure app) $
         tarball: #{tarball},
         test: true,
         accessToken: "mySecret"
-        }|] `shouldRespondWith` [json|[]|]
+        }|] `shouldRespondWith` [json|{appliedMigrations:[]}|]
 
     it "responds with 403 if invalid accessToken" $ do
       Just connString <- liftIO $ lookupEnv "DBM_DATABASE"
