@@ -1,10 +1,8 @@
 { pkgsPath ? null
 , compiler ? "ghc864"
-, fullyStatic ? true
 }@args:
-let
-  nix-build = builtins.fetchTarball "https://github.com/Feeld/nix-build/archive/386fef2393fbb3dc03af5c9eabb7c226a9b2b833.tar.gz";
-in import nix-build (args // {
+let nix-build = builtins.fetchTarball "https://github.com/Feeld/fld-ks/archive/01e2bdc0d91273eceb540c6e74e3aa6b0dfdb24c.tar.gz";
+in import "${nix-build}/nix" (args // {
   haskellOverlay = pkgs: self: super:
     with pkgs.haskell.lib;
     let
