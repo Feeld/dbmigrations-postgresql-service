@@ -1,7 +1,9 @@
 { tag ? "latest"
 , name ? "fld-production/dbmigrations-postgresql-service"
 , port ? 8080
-, pkgs ? import ../. {}
+, user ? null
+, pass ? null
+, pkgs ? import ../. {inherit user pass;}
 }:
 let
   suExec = pkgs.pkgsMusl.su-exec.overrideAttrs(o:{CFLAGS="--static";});
