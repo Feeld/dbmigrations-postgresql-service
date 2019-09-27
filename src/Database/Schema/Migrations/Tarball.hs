@@ -15,6 +15,7 @@ import           Database.Schema.Migrations.Store
 import qualified Codec.Archive.Tar                    as Tar
 import qualified Codec.Compression.GZip               as Gzip
 import qualified Codec.Compression.Zlib.Internal      as Gzip (DecompressError)
+import           Control.Applicative                  ((<|>))
 import           Control.DeepSeq                      (NFData (..), force)
 import           Control.Exception                    (Exception, Handler (..),
                                                        catch, catches, evaluate,
@@ -68,7 +69,9 @@ tarballStore contents = do
       Right MigrationStore
         { loadMigration = migrationFromEntry entryMap
         , saveMigration = \_ -> throwIO NotImplemented
-        , getMigrations = pure $ mapMaybe (T.stripSuffix ".txt") $ M.keys entryMap
+        , getMigrations = pure $
+               mapMaybe (T.stripSuffix ".txt") (M.keys entryMap)
+            <> mapMaybe (T.stripSuffix ".yml") (M.keys entryMap)
         , fullMigrationName = pure . cs
         }
     Right (Left (e, _)) -> Left (InvalidTarballError e)
@@ -101,7 +104,7 @@ migrationFromEntry contentMap name =
   (Right <$> process) `catch` (\(TarballStoreError s) -> return $ Left $ "Could not parse migration " ++ cs name ++ ":" ++ s)
   where
     process =
-      case M.lookup (name<>".txt") contentMap of
+      case M.lookup (name<>".txt") contentMap <|> M.lookup (name<>".yml") contentMap of
           Just bs -> do
             yaml <- parseYamlBytes bs
             -- Convert yaml structure into basic key/value map

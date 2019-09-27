@@ -58,7 +58,7 @@ spec = before (pure app) $
                 drop table foo;
               |]
           Right entrySecond = do
-            path <- Tar.toTarPath False "./second.txt"
+            path <- Tar.toTarPath False "./second.yml"
             pure $ Tar.fileEntry path $ cs [text|
               Depends: initial
               Apply: |
