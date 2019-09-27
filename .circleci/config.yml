@@ -40,8 +40,6 @@ jobs:
             IMAGE_FILE=$(nix-build nix/kube/image.nix --no-out-link \
               --argstr tag $IMAGE_TAG \
               --argstr name $IMAGE_NAME \
-              --argstr user fld-CI \
-              --argstr pass $GITHUB_FLD_CI_PASSWORD \
               )
             echo "Compressed image size: $(ls -lh $IMAGE_FILE | cut -f5 -d' ')"
 
@@ -53,7 +51,7 @@ jobs:
             export KEYFILE=/dev/shm/pk
             (umask 0077 && echo ${NIX_PRIVATE_KEY} > $KEYFILE)
 
-            export NIXOPTS="nix -A dbmigrations-postgresql-service --argstr user fld-CI --argstr pass $GITHUB_FLD_CI_PASSWORD"
+            export NIXOPTS="nix -A dbmigrations-postgresql-service"
             export CACHE=/src/.nix-cache
 
             echo "Building..."
