@@ -54,7 +54,7 @@ import           Moo.Core                                (AppState (..), AppT,
                                                           CommandOptions (..))
 import           Servant                                 ((:>), Handler, JSON,
                                                           Post, ReqBody,
-                                                          ServantErr (..),
+                                                          ServerError (..),
                                                           Server, err400,
                                                           err403, err422,
                                                           hoistServer)
@@ -87,7 +87,7 @@ server :: Text -> Server UpgradeAPI
 server = hoistServer (Proxy @UpgradeAPI) nt . genericServer
   where
   nt :: ExceptT UpgradeServerError Handler x -> Handler x
-  nt = either (throwError . toServantError) pure <=< runExceptT
+  nt = either (throwError . toServerError) pure <=< runExceptT
 
 genericServer
   :: ( MonadBaseControl IO m
@@ -146,10 +146,10 @@ upgradeCommand storeData = do
       (if isTesting then rollbackBackend else commitBackend) backend
       pure applied
 
-toServantError
-  :: UpgradeServerError -> ServantErr
-toServantError (LoadError errors)      = err400 {errBody = msg }
+toServerError
+  :: UpgradeServerError -> ServerError
+toServerError (LoadError errors)      = err400 {errBody = msg }
   where msg = cs $ T.unlines $ map (cs . show) errors
-toServantError (TarballStoreError err) = err400 {errBody = cs $ show err}
-toServantError (SqlError err)          = err422 {errBody = cs $ show err}
-toServantError Unauthorized            = err403 {errBody = "Invalid accessToken"}
+toServerError (TarballStoreError err) = err400 {errBody = cs $ show err}
+toServerError (SqlError err)          = err422 {errBody = cs $ show err}
+toServerError Unauthorized            = err403 {errBody = "Invalid accessToken"}

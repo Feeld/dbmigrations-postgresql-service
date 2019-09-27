@@ -1,7 +1,12 @@
 { pkgsPath ? null
 , compiler ? "ghc864"
+, user ? null
+, pass ? null
 }@args:
-let nix-build = builtins.fetchTarball "https://github.com/Feeld/fld-ks/archive/01e2bdc0d91273eceb540c6e74e3aa6b0dfdb24c.tar.gz";
+let nix-build =
+  if user != null && pass != null
+  then builtins.fetchTarball "https://${user}:${pass}@github.com/Feeld/fld-auth/archive/054e48a8de38710c4448f9d496c176dc38af085d.tar.gz"
+  else ../../feeld/fld-auth;
 in import "${nix-build}/nix" (args // {
   haskellOverlay = pkgs: self: super:
     with pkgs.haskell.lib;
